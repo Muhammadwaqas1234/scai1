@@ -26,14 +26,18 @@ dynamodb = boto3.resource('dynamodb', region_name='ap-southeast-2')
 dynamodb_client = boto3.client('dynamodb', region_name='ap-southeast-2')
 
 # Create tables if they don't exist
-def create_dynamodb_table(table_name, key_schema, attribute_definitions, provisioned_throughput):
+def create_dynamodb_table(table_name, key_schema, attribute_definitions, provisioned_throughput, global_secondary_indexes=None):
     try:
-        table = dynamodb.create_table(
-            TableName=table_name,
-            KeySchema=key_schema,
-            AttributeDefinitions=attribute_definitions,
-            ProvisionedThroughput=provisioned_throughput
-        )
+        table_params = {
+            'TableName': table_name,
+            'KeySchema': key_schema,
+            'AttributeDefinitions': attribute_definitions,
+            'ProvisionedThroughput': provisioned_throughput
+        }
+        if global_secondary_indexes:
+            table_params['GlobalSecondaryIndexes'] = global_secondary_indexes
+
+        table = dynamodb.create_table(**table_params)
         table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
         print(f"Table {table_name} created successfully.")
     except dynamodb_client.exceptions.ResourceInUseException:
@@ -46,7 +50,7 @@ create_dynamodb_table(
     ],
     attribute_definitions=[
         {'AttributeName': 'id', 'AttributeType': 'S'},
-        {'AttributeName': 'email', 'AttributeType': 'S'}  # Add this line for the email attribute
+        {'AttributeName': 'email', 'AttributeType': 'S'}
     ],
     provisioned_throughput={
         'ReadCapacityUnits': 10,
@@ -56,7 +60,7 @@ create_dynamodb_table(
         {
             'IndexName': 'email-index',
             'KeySchema': [
-                {'AttributeName': 'email', 'KeyType': 'HASH'}  # Create the index on the email attribute
+                {'AttributeName': 'email', 'KeyType': 'HASH'}
             ],
             'Projection': {
                 'ProjectionType': 'ALL'
@@ -281,7 +285,10 @@ def register():
                 "username": username,
                 "password": password,
                 "email": email,
-                "registration_date": registration_date
+                "registration_date": registration_date,
+                "user_type": "basic",  # Default user type
+                "question_count": 0,
+                "last_question_date": registration_date
             }
         )
 
@@ -290,6 +297,7 @@ def register():
 
         return redirect(url_for("index"))
     return render_template("register.html")
+
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -331,7 +339,6 @@ def chat():
 
         question_limit = 10 if user.get('user_type') == 'pro' else 5
 
-
         if user['question_count'] >= question_limit:
             return jsonify({"error": f"{user['user_type'].capitalize()} user has reached maximum question limit"})
 
@@ -360,6 +367,7 @@ def chat():
         return jsonify({"response_text": response_text, "additional_questions": additional_questions, "audio_data": audio_data, "document_session": document_session})
 
     return jsonify({"error": "User not found"})
+
 
 @app.route("/change_password", methods=["GET", "POST"])
 def change_password():
